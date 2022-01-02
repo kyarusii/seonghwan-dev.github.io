@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  
+  <url>
+    <loc>http://blog.jeon.sh/post/3/</loc>
+    
+    <lastmod>2021-11-19</lastmod>
+    
+  </url>
+  
+  <url>
+    <loc>http://blog.jeon.sh/post/2/</loc>
+    
+    <lastmod>2021-11-19</lastmod>
+    
+  </url>
+  
+  <url>
+    <loc>http://blog.jeon.sh/about/index.html</loc>
+    
+    <lastmod>2021-08-31</lastmod>
+    
+  </url>
+  
+
+  <url>
+    <loc>http://blog.jeon.sh/</loc>
+    <lastmod>2022-01-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  
+  <url>
+    <loc>http://blog.jeon.sh/tags/%EC%9C%A0%EB%8B%88%ED%8B%B0/</loc>
+    <lastmod>2022-01-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
+    <loc>http://blog.jeon.sh/tags/%EC%9C%A0%EB%8B%88%ED%8B%B0-%EB%B3%B4%EC%95%88/</loc>
+    <lastmod>2022-01-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+
+  
+  <url>
+    <loc>http://blog.jeon.sh/categories/3/</loc>
+    <lastmod>2022-01-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+  <url>
+    <loc>http://blog.jeon.sh/categories/2/</loc>
+    <lastmod>2022-01-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  
+</urlset>

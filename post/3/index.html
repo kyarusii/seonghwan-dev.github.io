@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  
+  <title>유니티 파일시스템에서 메타데이터 숨기기 [ Fireplace ]</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code&display=swap" rel="stylesheet">
+  <!-- <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap" rel="stylesheet">  -->
+  <!-- <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css" /> -->
+  <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic&display=swap" rel="stylesheet">
+  
+    <!-- stylesheets list from config.yml -->
+    
+      <link rel="stylesheet" href="https://blog.jeon.sh/css/calcifer.css">
+    
+  
+  
+  <!-- 
+  <script src="//cdn1.lncld.net/static/js/3.1.1/av-min.js"></script>
+    <script id="leancloud">
+      AV.init({
+          appId: "6E5zTbTljdUbVW2WkXPsXGJk-gzGzoHsz",
+          appKey: "0vsyDKfNpeSECAI70J794ugv"
+      });
+    </script>
+ -->
+<!--Canonical : 유사하거나 중복된 페이지의 표준 페이지 정의-->
+<!-- <link rel="canonical" href="http://blog.jeon.sh/post/3/"/> -->
+<meta name="generator" content="Hexo 5.4.0"><link rel="alternate" href="/pss2.xml" title="Fireplace" type="application/rss+xml">
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+    <div class="menu">
+      <div class="menu-left">
+        <a href="/">
+          <img src="https://blog.jeon.sh/favicon.ico"></img>
+        </a>
+      </div>
+      <div class="menu-right">
+        
+          
+          
+          
+          
+          
+          
+          <a href="/">🏠</a>
+        
+      </div>
+    </div>
+</div>
+    </div>
+    <div class="container">
+        <h1 class="post-title">유니티 파일시스템에서 메타데이터 숨기기</h1>
+<article class="post markdown-style">
+  <p>배포될 유니티 앱에서 파일시스템에 존재하는 메타데이터를 숨기는 튜토리얼</p>
+<blockquote>
+<p>본 작업은 기본적인 <code>il2cpp</code> 작업 흐름에 대해 이해하신 다음 확인하시는 편이 좋습니다.<br><strong>Windows 배포를 위한 체크리스트</strong>에서 이어지는 글입니다.</p>
+</blockquote>
+<p>본 튜토리얼은 <code>2019.4.14f1</code> 버전으로 진행되었습니다. 다른 버전의 유니티인 경우 작업 파이프라인이 상이할 수 있습니다. 윈도우즈 빌드 기준으로 작성되었지만, 안드로이드 플랫폼에서도 동일하게 작업할 수 있습니다. <code>.so</code> 파일에서도 유사한 기법을 사용할 수 있습니다.</p>
+<ul>
+<li><a href="#%EC%8B%9C%EC%9E%91%ED%95%98%EB%A9%B0">시작하며</a></li>
+<li><a href="#%EB%8C%80%EC%9D%91">작업하기</a></li>
+<li><a href="#%EC%9D%98%EB%AF%B8%EC%99%80-%EA%B6%81%EA%B8%88%EC%A6%9D">의미와 궁금한 것들</a></li>
+<li><a href="#%EB%A7%88%EC%B9%98%EB%A9%B0">마치며</a></li>
+</ul>
+<h2 id="시작하며"><a href="#시작하며" class="headerlink" title="시작하며"></a>시작하며</h2><p>유니티는 스크립팅 언어로 <code>C#</code>을 채택하였고, 사용자는 엔진에서 제공하는 <code>API</code>를 이용해 게임 로직을 구현합니다. 네이티브 플러그인이 아닌 경우, 대체로 <code>C#</code> 코드를 사용하며 <code>JIT</code> 컴파일 과정을 거쳐 메모리에 로드되어 동작이 수행됩니다. 에디터에서는 항상 <code>JIT</code> 컴파일 방식으로 동작하며, 빌드 후에는 <code>JIT</code> 컴파일 방식(<code>mono</code>)과 <code>AOT</code> 컴파일 방식(<code>IL2CPP</code>) 중에 선택해 바이너리를 추출할 수 있습니다. </p>
+<p>이 때, <code>AOT</code> 컴파일 방식에서는 <code>Literal String</code>, <code>Method</code>, <code>Struct</code> 정보들을 직접 관리하지 않고 <code>global-metadata.dat</code>라는 파일에 따로 저장하여 보관합니다. <code>GameAssembly.dll</code>이 로드되면서 직접 파일 시스템에 접근하여 메모리에 로드하고 파싱하여 배열로 관리합니다.</p>
+<p>윈도우 빌드한 애플리케이션 기준으로는 <code>[게임이름]_Data\il2cpp_data\Metadata\</code> 경로에 위치합니다.</p>
+<p><img src="https://i.imgur.com/tyaP8d5.png"></p>
+<p><em>모 상용 게임에서 노출되어 있는 글로벌 메타데이터 파일</em></p>
+<p>텍스트 에디터로 열어보시면 바이너리 포맷의 파일임을 확인하실 수 있습니다. 그러나 <code>IL2CPPDumper</code>를 이용하시면 쉽게 데이터를 파싱해 볼 수 있습니다. </p>
+<p><code>Il2CppDumper</code>를 실행하고, <code>GameAssembly.dll</code>과 <code>global-metadata.dat</code>를 차례로 선택해주면, 구조체 데이터가 담긴 헤더, 스크립트 심볼 정보들이 담긴 <code>json</code> 데이터, <code>String Literal</code>이 담긴 <code>json</code>, <code>CPP</code> 코드로 변환되기 전의 구조였을것으로 예상되는 <code>C#</code> 신택스의 클래스 구조, 그리고 이를 묶은 더미 <code>DLL</code>들을 생성해줍니다.</p>
+<p><img src="https://i.imgur.com/aKIhUnO.png"></p>
+<p>이렇게 생성된 파일들에서 <code>dump.cs</code>를 열어보면 <code>C#</code> 문법의 클래스구조가 노출되고 이를 이용해 클래스를 재구성할 수 있습니다. </p>
+<p><img src="https://i.imgur.com/cNwpJkf.png" alt="img"></p>
+<p>위는 <code>global-metadata.dat</code>에서 추출한 클래스구조, 아래는 그를 기반으로 생성한 구조체입니다.</p>
+<p><img src="https://i.imgur.com/pMOUs47.png"></p>
+<p>이렇게 재구성된 클래스로 게임을 공격하는 방법에 대해서는 <a href="/2021/03/05/unity-checklist-for-security-on-windows/#4%EF%B8%8F%E2%83%A3-DLL-%EC%9D%B8%EC%A0%9D%EC%85%98">이 글</a>에서 다루었습니다.</p>
+<h2 id="대응"><a href="#대응" class="headerlink" title="대응"></a>대응</h2><p>누차 말씀드리지만 완벽한 방법은 아니란 것을 항상 기억해주세요. </p>
+<p>저희는 <code>IL2CPP</code> 의 코드를 수정해 이 <code>global-metadata.dat</code> 파일을 숨길 예정입니다. 어떤 작업을 할 지만 읽고도 어떻게 작업할지 감이오시는 분들을 위해 먼저 작업 요약을 작성했습니다.</p>
+<ol>
+<li><code>Project Settings</code> - <code>Player</code> - <code>Other Settings</code> - <code>Configuration</code> - <code>Scripting Backend</code>를 <code>IL2CPP</code>로 선택</li>
+<li><code>File</code> - <code>Build Settings</code> - <code>Create Visual Studio Solution</code> 옵션을 키고 빌드</li>
+<li>생성된 <code>global-metadata.dat</code> 파일을 <code>char array</code>로 변환</li>
+<li>생성된 솔루션의 <code>libil2cpp\vm\MetadataLoader.cpp</code> 수정해서 변환된 <code>char array</code> 하드코딩</li>
+<li><code>Master Configuration</code> 옵션으로 빌드</li>
+</ol>
+<h3 id="1-프로젝트-추출-옵션으로-빌드"><a href="#1-프로젝트-추출-옵션으로-빌드" class="headerlink" title="1. 프로젝트 추출 옵션으로 빌드"></a>1. 프로젝트 추출 옵션으로 빌드</h3><p>빈 프로젝트로 진행하기엔 약간 심심하니 에셋 스토어의 무료 에셋을 하나 다운로드 받아 빌드에 사용합니다. </p>
+<p><img src="https://i.imgur.com/qa2MttD.png"></p>
+<p>Create Visual Studio Solution 옵션으로 빌드하면 아래처럼 파일시스템이 생성됩니다.</p>
+<p><img src="https://i.imgur.com/Kexyz9m.png"></p>
+<p>솔루션에는 4개의 프로젝트가 솔루션 안에 생성됩니다.</p>
+<p><img src="https://i.imgur.com/Yfo1Q63.png"></p>
+<ul>
+<li><code>Il2CppOutputProject</code> : 생성된 코드 프로젝트입니다. 대부분의 작업은 여기에서 진행됩니다.<ul>
+<li><code>IL2CPP</code> : 에디터 버전에 종속되어 설치된 <code>il2cpp</code> 모듈의 일부를 그대로 복사해옵니다.</li>
+<li><code>Source</code> : 작성한 <code>C#</code>코드가 <code>CPP</code> 코드로 생성되어 추가됩니다.</li>
+</ul>
+</li>
+<li><code>UnityPlayerStub</code> : <code>UnityPlayer.dll</code>이 됩니다. 하지만 코드를 수정해도 반영되지 않습니다. 이미 빌드되어있는 <code>DLL</code>파일을 카피해옵니다.</li>
+<li><code>SafeMetadata</code> : <code>프로젝트명.exe</code> 으로 컴파일됩니다. <code>wWinMain</code>에 코드를 작성하면 컴파일되어 반영됩니다. </li>
+</ul>
+<p>간단하게 콘솔을 띄우는 코드로 확인해볼 수 있습니다.</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> WINAPI <span class="title">wWinMain</span><span class="params">(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, <span class="keyword">int</span> nShowCmd)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	AllocConsole();</span><br><span class="line">	FILE* file;</span><br><span class="line"></span><br><span class="line">	freopen_s(&amp;file, <span class="string">&quot;CONIN$&quot;</span>, <span class="string">&quot;r&quot;</span>, <span class="built_in">stdin</span>);</span><br><span class="line">	freopen_s(&amp;file, <span class="string">&quot;CONOUT$&quot;</span>, <span class="string">&quot;w&quot;</span>, <span class="built_in">stderr</span>);</span><br><span class="line">	freopen_s(&amp;file, <span class="string">&quot;CONOUT$&quot;</span>, <span class="string">&quot;w&quot;</span>, <span class="built_in">stdout</span>);</span><br><span class="line">	</span><br><span class="line">    <span class="keyword">return</span> UnityMain(hInstance, hPrevInstance, lpCmdLine, nShowCmd);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>여기에서 <code>return</code> 하는 <code>UnityMain(...)</code>은 <code>UnityPlayerStub</code>의 <code>Main</code>입니다. 그러니까 프로그램 실행 순서는, <code>exe</code> - <code>UnityPlayer.dll</code> - <code>GameAssembly.dll</code>이 됩니다. 이를 이용해서 어느 타이밍에 어떤 장치를 심을지 결정하시면 됩니다.</p>
+<h3 id="2-메타데이터를-바이너리로-변환"><a href="#2-메타데이터를-바이너리로-변환" class="headerlink" title="2. 메타데이터를 바이너리로 변환"></a>2. 메타데이터를 바이너리로 변환</h3><p>빌드에서 생성되는 <code>global-metadata.dat</code> 파일을 로드해 임의의 <code>byte array</code>로 변환을 거칩니다. 저는 빌드 이벤트에서 진행하는 방식을 택했습니다.</p>
+<figure class="highlight csharp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">const</span> <span class="built_in">string</span> BIN = <span class="string">&quot;build\\bin\\&quot;</span>;</span><br><span class="line"><span class="keyword">private</span> <span class="keyword">const</span> <span class="built_in">string</span> METADATA = <span class="string">&quot;il2cpp_data\\Metadata\\global-metadata.dat&quot;</span>;</span><br><span class="line"><span class="keyword">private</span> <span class="keyword">const</span> <span class="built_in">string</span> HEADER = <span class="string">&quot;Il2CppOutputProject\\IL2CPP\\libil2cpp\\vm\\SafeMetadata.h&quot;</span>;</span><br><span class="line">		</span><br><span class="line">[<span class="meta">PostProcessBuild(Order.IL2CPP)</span>]</span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">OnPostProcessBuild</span>(<span class="params">BuildTarget target, <span class="built_in">string</span> pathToBuildProject</span>)</span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">switch</span> (target)</span><br><span class="line">	&#123;</span><br><span class="line">		<span class="keyword">case</span> BuildTarget.StandaloneWindows:</span><br><span class="line">		<span class="keyword">case</span> BuildTarget.StandaloneWindows64:</span><br><span class="line">			OnWindows(pathToBuildProject);</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">		<span class="literal">default</span>:</span><br><span class="line">			<span class="keyword">break</span>;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">OnWindows</span>(<span class="params"><span class="built_in">string</span> pathToBuildProject</span>)</span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="keyword">if</span> (!UnityEditor.WindowsStandalone.UserBuildSettings.createSolution)</span><br><span class="line">		<span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">	pathToBuildProject = pathToBuildProject.Replace(<span class="string">$&quot;/<span class="subst">&#123;PlayerSettings.productName&#125;</span>.exe&quot;</span>, <span class="string">&quot;&quot;</span>);</span><br><span class="line">			</span><br><span class="line">	<span class="built_in">string</span> metadataPath = <span class="string">$&quot;<span class="subst">&#123;pathToBuildProject&#125;</span>\\<span class="subst">&#123;BIN&#125;</span><span class="subst">&#123;PlayerSettings.productName&#125;</span>_Data\\<span class="subst">&#123;METADATA&#125;</span>&quot;</span>;</span><br><span class="line">	<span class="built_in">string</span> outputHeaderPath = <span class="string">$&quot;<span class="subst">&#123;pathToBuildProject&#125;</span>\\<span class="subst">&#123;HEADER&#125;</span>&quot;</span>;</span><br><span class="line"></span><br><span class="line">	MetadataHeader header = <span class="keyword">new</span> MetadataHeader(metadataPath);</span><br><span class="line">	File.WriteAllText(outputHeaderPath, header.ToString());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>간략하게 빌드 직후에 호출되는 콜백을 이용했습니다. <code>metadata.dat</code> 파일이 있을 것으로 예상되는 경로에서 직접 로드해, <code>header</code> 파일을 생성해줍니다. 전체 소스는 <a target="_blank" rel="noopener" href="https://gist.github.com/seonghwan-dev/22a6d1078d902445c6216fcb37d0ffa0">여기</a>에서 보실 수 있습니다. 생성된 메타데이터 파일은 아래와 같습니다.</p>
+<p><img src="https://i.imgur.com/406f47t.png"></p>
+<p><code>global-metadata.dat</code> 파일은 2.25MB 였던 반면 이 헤더 파일은 13MB정도로 커졌습니다. 이 헤더를 <code>IL2CPP</code> 에서 제공하는 메타데이터 로드 부분 코드에서 직접 인클루드하고, 로드할 것입니다.</p>
+<h3 id="3-로드-부분-코드-수정"><a href="#3-로드-부분-코드-수정" class="headerlink" title="3. 로드 부분 코드 수정"></a>3. 로드 부분 코드 수정</h3><p>생성된 솔루션을 열고, <code>Il2CppOutputProject\IL2CPP\libil2cpp\vm</code> 경로에서 <code>MetadataLoader.cpp</code> 소스 파일을 열어주세요. 메타데이터를 로드하는 부분의 코드를 확인할 수 있습니다.</p>
+<p><img src="https://i.imgur.com/xzBEZQ3.png"></p>
+<p>간략히 코드를 설명드리면, 매개변수로 파일이름을 받았고 <code>Metadata</code> 폴더와 함께 경로를 <code>Resolve</code> 한 뒤, 파일 버퍼에 올리고 리턴해줍니다. 파일시스템에서 주어진 파일 이름으로 데이터를 로드하는 간단한 구현입니다.</p>
+<p>이 부분을 아래처럼 수정해줍니다.</p>
+<p><img src="https://i.imgur.com/OgX7L4h.png"></p>
+<p>우선, 앞서 생성했던 <code>SafeMetadata.h</code>를 인클루드 해 줍니다. 2에서 진행한 빌드 이벤트가 제대로 수행되었다면 <code>vm</code> 폴더 경로에 해당 헤더가 존재하고 있을 것입니다. 코드에 그대로 데이터가 정의되어있으므로, 메모리에 데이터를 카피해주고 원래 로직이 하던 것 처럼 리턴해줍니다. 테스트를 빌드해주세요.</p>
+<blockquote>
+<p>빌드 테스트 방법</p>
+<p>bin\Architecture\Build Config\ 경로에 exe 파일이 생성되었을 것입니다.</p>
+<p>실행하기 전에, bin...Data\il2cpp_data\Metadata\global-metadata.dat 파일의 이름을 다른 것으로 바꿔주세요. 이 데이터가 없어도 제대로 게임이 동작하는지 확인해야하기 때문입니다.</p>
+</blockquote>
+<p>테스트에 성공했다면, 배포될 파일 구조에서는 메타데이터를 제외해도 됩니다. 번거롭게 숨겨놓고 메타데이터를 그대로 배포해버리면 전혀 의미 없는 일이 되니 주의해주세요. 2에서 생성했던 빌드 스크립트에서 자동으로 다른 위치로 옮겨두는 로직을 추가하는 것을 권장합니다.</p>
+<h3 id="4-배리에이션"><a href="#4-배리에이션" class="headerlink" title="4. 배리에이션"></a>4. 배리에이션</h3><p>위 스텝들을 통해 메타데이터를 파일시스템 상에 남기지 않을 수 있는 방법을 터득했습니다. 조금 심리적인 방법을 시도해겠습니다. <code>MetadataLoader::LoadMetadataFile</code> 메서드가 호출되는 곳은 <code>MetadataCache::Initialize</code> 함수입니다. 정직하게 리터럴 스트링을 이용해 로드하고 있으며, 이는 여러 정적 분석 도구에서 쉽게 확인이 가능합니다. <a href="/2021/03/05/unity-checklist-for-security-on-windows/#4%EF%B8%8F%E2%83%A3-il2cpp-%EB%B9%8C%EB%93%9C">참고</a> </p>
+<p><img src="https://i.imgur.com/bLgPjAV.png"></p>
+<p>우리는 이미 메타데이터를 <code>DLL</code>에 박아 넣어버렸기 때문에 파일 이름을 매개변수로 전달할 필요가 없습니다. 헤더를 수정해 파라미터를 아예 받지 않도록 바꾸거나, 쓸데없는 파일 이름을 넘겨주며 공격자를 짜증나게 할 수 있습니다. 이것은 작업하시는 분의 선택입니다. 스트링을 남겨두면 메타데이터를 로드하는 곳의 위치를 쉽게 파악할 수 있어 취약점이 될 수도 있지만, <code>GameAssembly.dll</code>의 <code>EntryPoint</code>부터 메타데이터 로드하는 곳 까지는 그렇게 복잡하지 않습니다. 초기화 흐름대로 함수를 따라가다보면 금방 발견하기 때문에 큰 의미를 가지지는 못합니다.</p>
+<p>한 가지 배리에이션의 예시로 제가 작업했던 프로젝트를 소개하겠습니다.</p>
+<p><code>xor</code> 암복호화를 이용해, 한 번 더 꼬아 작업했습니다. 보안상의 이유로 코드는 따로 작성하지 않겠습니다. <code>global-metadata.dat</code>를 매개변수로 받는 부분을 수정하지 않고 그대로 받았습니다. 그리고 파일을 열고, 메모리에 로드했다가 언로드하는 부분의 코드도 주석처리 하지 않았고, <code>xor</code> 연산의 키로, <code>global-metadata.dat</code>라는 스트링을 사용했습니다. </p>
+<p>정적 분석 도구에서 보면 매개변수로 받고도 사용하지 않았다는 점은 쉽게 파악이 가능합니다. 이와 같은 흐름을 파악하게 되면 공격자는 무언가 다른 로드 방식이 숨겨져있을 거라고 생각할 것입니다. 이를 이용해 정상적인 메타데이터 로드를 하는 것처럼 파라미터를 사용하면서도, 실제로 앱과 함께 배포되는 메타데이터 파일은 완전히 더미 데이터입니다. 디버거를 붙인다고 해도, IO도 발생했고 포인터로 액세스하며 메모리에 올라갔다 내려가는 걸 확인할 수 있기 때문에 신경써서 살펴보지 않으면 껍데기일 뿐이라는 것을 눈치채지 못하고 넘어가는 경우가 많습니다. 마지막으로는 상용 패킹 도구를 이용, DLL을 한 번 더 패킹해주면서 어리숙한 정적 분석으로부터 보호받습니다. </p>
+<h3 id="5-자동화"><a href="#5-자동화" class="headerlink" title="5. 자동화"></a>5. 자동화</h3><h4 id="방법-1-il2cpp-빌드-모듈을-수정"><a href="#방법-1-il2cpp-빌드-모듈을-수정" class="headerlink" title="방법 1 - il2cpp 빌드 모듈을 수정"></a>방법 1 - il2cpp 빌드 모듈을 수정</h4><p>사용중인 에디터 버전의 설치경로에는 <code>il2cpp</code>라는 이름의 폴더에 빌드 모듈이 그대로 위치해있습니다. 여기 있는 코드를 미리 수정해두어 빌드 때 마다 여기에서 헤더와 소스 파일을 카피해도록 하는 것입니다. 해당 버전을 사용하는 모든 프로젝트가 수정된 빌드 모듈을 공유해야한다는 단점(장점일 수도 있지요)이 있습니다. 빌드슬레이브에서는 사용해 볼 만한 선택지입니다.</p>
+<h4 id="방법-2-스크립트로-오버라이드"><a href="#방법-2-스크립트로-오버라이드" class="headerlink" title="방법 2 - 스크립트로 오버라이드"></a>방법 2 - 스크립트로 오버라이드</h4><p>권장하는 선택지입니다. 포스트 빌드 콜백에 정의했던 메타데이터 컨버터 스크립트처럼, 빌드 이벤트를 받아 오버라이드하는 방식입니다.</p>
+<figure class="highlight csharp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">private</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title">CopyCustomScripts_Windows</span>(<span class="params"><span class="built_in">string</span> pathToBuiltProject</span>)</span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">	<span class="built_in">string</span> loaderHeaderPath =</span><br><span class="line">		pathToBuiltProject + <span class="string">&quot;\\Il2CppOutputProject\\IL2CPP\\libil2cpp\\vm\\MetadataLoader.h&quot;</span>;</span><br><span class="line">	<span class="built_in">string</span> loaderSourcePath =</span><br><span class="line">		pathToBuiltProject + <span class="string">&quot;\\Il2CppOutputProject\\IL2CPP\\libil2cpp\\vm\\MetadataLoader.cpp&quot;</span>;</span><br><span class="line"></span><br><span class="line">	<span class="built_in">string</span> customizedHeaderPath = <span class="string">$&quot;<span class="subst">&#123;Application.dataPath&#125;</span>\\SafeMetadata\\Native\\MetadataLoader.h&quot;</span>;</span><br><span class="line">	<span class="built_in">string</span> customizedSourcePath = <span class="string">$&quot;<span class="subst">&#123;Application.dataPath&#125;</span>\\SafeMetadata\\Native\\MetadataLoader.cpp&quot;</span>;</span><br><span class="line"></span><br><span class="line">	FileInfo loaderHeader = <span class="keyword">new</span> FileInfo(loaderHeaderPath);</span><br><span class="line">	<span class="keyword">if</span> (loaderHeader.Exists)</span><br><span class="line">	&#123;</span><br><span class="line">		loaderHeader.Delete();</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	FileInfo customizedHeader = <span class="keyword">new</span> FileInfo(customizedHeaderPath);</span><br><span class="line">	<span class="keyword">if</span> (customizedHeader.Exists)</span><br><span class="line">	&#123;</span><br><span class="line">		customizedHeader.CopyTo(loaderHeaderPath);</span><br><span class="line">	&#125;</span><br><span class="line">                </span><br><span class="line">	FileInfo loaderSource = <span class="keyword">new</span> FileInfo(loaderSourcePath);</span><br><span class="line">	<span class="keyword">if</span> (loaderHeader.Exists)</span><br><span class="line">	&#123;</span><br><span class="line">		loaderHeader.Delete();</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	FileInfo customizedSource = <span class="keyword">new</span> FileInfo(customizedSourcePath);</span><br><span class="line">	<span class="keyword">if</span> (customizedHeader.Exists)</span><br><span class="line">	&#123;</span><br><span class="line">		customizedHeader.CopyTo(loaderSourcePath);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>미리 수정한 헤더와 소스 파일을 프로젝트에 포함시켜두고, 빌드 이벤트로 카피해 덮어쓰기하는 방식입니다. </p>
+<p>여기까지가 메타데이터를 숨기기위해 사용되는 필수적인 수정사안들에 대한 자동화 제안입니다. 이외에 추가로 구현할 수 있는 <code>xor</code> 방식 암호화 등도 함께 붙여 사용하시면 됩니다. 단일 빌드에 대해 진행해야할 작업이 많고 번거로운 만큼 자동화 파이프라인을 갖춰두는 것이 생산성에 큰 도움이 됩니다.</p>
+<h2 id="의미와-궁금증"><a href="#의미와-궁금증" class="headerlink" title="의미와 궁금증"></a>의미와 궁금증</h2><h4 id="Q-앱이-차지하는-데이터-용량이-늘어나나요"><a href="#Q-앱이-차지하는-데이터-용량이-늘어나나요" class="headerlink" title="Q. 앱이 차지하는 데이터 용량이 늘어나나요?"></a>Q. 앱이 차지하는 데이터 용량이 늘어나나요?</h4><p><code>global-metadata.dat</code> 파일의 용량은 2MB 였던 반면 생성한 헤더는 13MB였습니다. 그러나 이 작업을 진행하기 전 후로 나누어 <code>GameAssembly.dll</code>의 용량을 비교하면, 8MB / 10MB로 사실상 데이터가 커진 것은 아닙니다. 컴파일되면서 데이터영역으로 들어가버려 다시 바이너리 형태로 저장되었기 때문입니다. 용량의 이점이나 손해는 미미합니다.</p>
+<h4 id="Q-전부-다-했어요-이제-안-뚫리나요"><a href="#Q-전부-다-했어요-이제-안-뚫리나요" class="headerlink" title="Q. 전부 다 했어요. 이제 안 뚫리나요?"></a>Q. 전부 다 했어요. 이제 안 뚫리나요?</h4><p>치트엔진을 설치하고, 빌드한 앱을 켜보세요. 치트엔진에서 유니티 프로세스를 찾아 어태치 하고, 상단 메뉴에서 Mono Dissect 메뉴를 선택해보세요. 메타데이터에 저장되어있던 심볼들이 그대로 노출됩니다. 들인 노력에 비해 너무 간단하게 무력화됩니다. 이런 방식의 접근은 다르게 차단해야합니다. 치트엔진의 이 기능은 <code>DLL</code>을 강제로 로드한 뒤 데이터에 접근하는 방식인데요, <a href="/2021/03/05/unity-checklist-for-security-on-windows/#3%EF%B8%8F%E2%83%A3-%EB%AA%A8%EB%93%88-%EB%B3%B4%ED%98%B8">이전 포스트</a>에서 <code>DLL Injection</code>을 막는 방법 중의 하나를 소개했습니다. <code>DLL</code> 인젝션을 막거나, 치트엔진의 <a target="_blank" rel="noopener" href="https://github.com/cheat-engine/cheat-engine/blob/master/Cheat%20Engine/MonoDataCollector/MonoDataCollector/PipeServer.cpp">데이터 콜렉터 소스</a>를 보고 작동하지 않도록 <code>IL2CPP</code> 모듈을 수정해야합니다. 이 부분에 대해서는 내용 정리 중에 있습니다.</p>
+<h4 id="Q-UnityPlayer-dll도-수정하고-싶어요"><a href="#Q-UnityPlayer-dll도-수정하고-싶어요" class="headerlink" title="Q. UnityPlayer.dll도 수정하고 싶어요"></a>Q. UnityPlayer.dll도 수정하고 싶어요</h4><p>유니티 엔진 코드 라이센스를 하시면 <code>IL2CPP</code> 빌드 솔루션도 함께 주는 것으로 알고 있습니다. 코드 라이센스 없이 할 수 있는 작업 레벨에서만 도움을 드릴 수 있을 것 같습니다. 얘기가 나온 김에, 조금 재미있는 장난을 쳐보겠습니다. </p>
+<p><code>Hex Editor</code>를 사용해 <code>UnityPlayer.dll</code>을 엽니다.</p>
+<p><code>GameAssembly.dll</code> 을 검색합니다.</p>
+<p><img src="https://i.imgur.com/WXv5ry9.png"></p>
+<p>적당한 길이의 스트링으로 바꿔줍니다. 저는 언리얼 엔진으로 바꾸었습니다.</p>
+<p><img src="https://i.imgur.com/AqUcOFr.png"></p>
+<p><code>GameAssembly.dll</code> 파일이름도 <code>UnrealEngine.dll</code>로 바꾸어주었습니다. 실행이 잘 됩니다.</p>
+<p><img src="https://i.imgur.com/1Yi8DVA.png"></p>
+<p>로드된 모듈을 확인하니 <code>UnityPlayer.dll</code>와 <code>UnrealEngine.dll</code>이 공존하고 있습니다. 쉽게 볼 수 없는 진풍경이네요. 이를 잘 이용하면, Op코드를 수정해 <code>GameAssembly.dll</code>을 로드하고 제대로 로드되었는지 확인하는 코드를 스킵해버리도록 변경할 수도 있습니다. 그리고 <code>exe</code> 파일에서 <code>UnityPlayer.dll</code>을 로드하기 전, <code>GameAssembly.dll</code>에 해당하는 데이터를 임의로 메모리에 로드할 수 있게됩니다. 라이엇 게임즈의 레전드 오브 룬테라는 이와 유사한 <code>stub.dll</code> 기법을 이용해 PE영역을 제거해 로드 되기 전에는 정적분석 되기 힘든 DLL을 임의로 로드하고 있습니다. </p>
+<h4 id="Q-병행하면-좋은-다른-기법들이-있나요"><a href="#Q-병행하면-좋은-다른-기법들이-있나요" class="headerlink" title="Q. 병행하면 좋은 다른 기법들이 있나요?"></a>Q. 병행하면 좋은 다른 기법들이 있나요?</h4><p>패킹을 고려해보시는 것도 괜찮습니다. 단점으로는 앱 구동 준비 시간이 길어집니다. 실행하고 몇 초 정도 앱 프레임이 뜨지 않고 로드됩니다. 게임 퍼포먼스상으로는 차이가 없습니다. 클래스명, 함수명, 변수명 난독화는 필수적으로 선행되어야합니다. </p>
+<h2 id="마치며"><a href="#마치며" class="headerlink" title="마치며"></a>마치며</h2><p>치트엔진의 모노데이터콜렉터 기능이 매우 치명적입니다. <code>IL2CPP</code> 방식의 유니티 앱은 여러 모듈을 사용하고 모듈 간 통신이 필수적이기 때문에 허용되지 않은 모듈에서 역시 export된 기능을 쉽게 사용할 수 있습니다. 특히 모노 데이터 콜렉터는 그 점을 확실히 인지하고, 메타데이터 파일과 관계없이 메모리에 로드된 상태의 데이터를 긁어갑니다. 근본적으로 <code>IL2CPP</code> 모듈 부분을 모두 뜯어고치거나, <code>UnityPlayer.dll</code>과 통신하는 방법을 교체 또는 감시하는 방식을 추가해야합니다. 가장 무식하면서도 직관적이라고 생각하는 방법은 <code>Game.exe</code>, <code>GameAssembly.dll</code>, <code>UnityPlayer.dll</code>을 모두 단일 파일로 묶어버리는 것입니다. 코드 라이센스 없이는 힘든 작업이겠죠.</p>
+<p>우리가 편의를 위해 상용엔진을 사용하기로 한 이상, 그로부터 발생하는 모든 부분은 트레이드 오프의 연장선에 있습니다. 라이센스를 하지 않으면 코드를 알 수 없는 블랙박스이기 때문에 해킹이 어렵지 않나 생각할 수도 있지만, 코드 라이센스를 하지 않은 모든 게임들은 동일한 파이프라인 위에서 제작되었다는 점을 고려하면 더 취약하다고 볼 수도 있습니다. 특정 유니티 함수의 바이너리 코드 패턴을 찾아내는 방식으로 제작된 치트라면 다른 게임에서도 동작할 수도 있는 여지가 있죠. 그만큼 ‘범용적’으로 공격받기 쉽다는 얘기입니다.</p>
+<p>상용 안티치트 솔루션을 사용하지 못하는 이상 저희는 ‘유니티 게임’의 스테레오 타입에서 최대한 벗어나야 합니다. ‘모든 유니티 게임’에서 동작하기위해 설계된 프로그램이 작동하지 않는 것만 해도 공격시도의 90% 이상을 막아낼 수 있다고 생각합니다. 만약 상용 안티치트를 쓰더라도, 이를 게을리해서는 안됩니다. 유니티 특성상 안티치트 역시 <code>C#</code> 레이어에서 실행이 되는 경우라거나 쉽게 그 사용처와 로딩 방식이 드러나기도 합니다. 어떤 안티치트를 사용하고 어떻게 로드되는지 알려진다면 그 비싼 로열티 지출이 있으나 마나한 소비가 됩니다. </p>
+<p>게임을 개발하시는 모든 분들이 많은 시간 고생해서 만들어낸 소중한 작업물들을 스스로 보호할 수 있으면 좋겠습니다.</p>
+
+</article>
+<br/>
+<!-- <div id="disqus_thread"></div>
+<script>
+    /**
+    *  RECOMMENDED CONFIGURATION VARIABLES: EDIT AND UNCOMMENT THE SECTION BELOW TO INSERT DYNAMIC VALUES FROM YOUR PLATFORM OR CMS.
+    *  LEARN WHY DEFINING THESE VARIABLES IS IMPORTANT: https://disqus.com/admin/universalcode/#configuration-variables    */
+    
+    // var disqus_config = function () {
+    // this.page.url = '{{content.absolute_url}}';  // Replace PAGE_URL with your page's canonical URL variable
+    // this.page.identifier = '{{content_id}}'; // Replace PAGE_IDENTIFIER with your page's unique identifier variable
+    // };
+    
+    (function() { // DON'T EDIT BELOW THIS LINE
+    var d = document, s = d.createElement('script');
+    s.src = 'https://seonghwan-dev.disqus.com/embed.js';
+    s.setAttribute('data-timestamp', +new Date());
+    (d.head || d.body).appendChild(s);
+    })();
+</script>
+<noscript>Please enable JavaScript to view the <a target="_blank" rel="noopener" href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript> -->
+
+    <div class="pagenator post-pagenator">
+    
+    
+
+    
+    <!-- <p>최근 수정 2021-11-19</p> -->
+    
+    
+        <a class="extend next post-next" href="/post/2/">다음 글</a>
+    
+    </div>
+
+
+    </div>
+    <div class="footer">
+        <div class="container">
+    <div class="social">
+	<ul class="social-list">
+		
+			
+				
+				
+				<li>
+					<a href="mailto:Seonghwan@pm.me" title="email" target="_blank">
+					<i class="fa fa-email"></i>
+					</a>
+				</li>
+			
+		
+			
+		
+			
+				
+				<li>
+					<a href="https://twitter.com/calci_dev" title="twitter" target="_self">
+					<i class="fa fa-twitter"></i>
+					</a>
+				</li>
+			
+		
+			
+		
+			
+		
+			
+		
+			
+				
+				<li>
+					<a href="https://github.com/seonghwan-dev" title="github" target="_self">
+					<i class="fa fa-github"></i>
+					</a>
+				</li>
+			
+		
+			
+		
+			
+		
+			
+		
+	</ul>
+</div>
+    <div class="copyright">
+        <span>
+            
+            
+            
+                © Calcifer 2021 - 2022
+            
+        </span>
+    </div>
+    <!-- <div class="power">
+        <span>
+            Powered by <a target="_blank" rel="noopener" href="https://hexo.io">Hexo</a> & <a target="_blank" rel="noopener" href="https://github.com/CaiChenghan/iLiKE">iLiKE Theme</a>
+        </span>
+    </div> -->
+    <script src="https://cdn.bootcss.com/jquery/3.3.1/jquery.js"></script>
+    <!--page counter part-->
+<script>
+function addCount (Counter) {
+    url=$('.article-date').attr('href').trim();
+    title = $('.article-title').text().trim();
+    var query = new AV.Query(Counter);
+    //use url as unique idnetfication
+    query.equalTo("url",url);
+    query.find({
+        success: function(results) {
+            if (results.length>0) {
+                var counter=results[0];
+                counter.fetchWhenSave(true); //get recent result
+                counter.increment("time");
+                counter.save();
+            } else {
+                var newcounter=new Counter();
+                newcounter.set("title",title);
+                newcounter.set("url",url);
+                newcounter.set("time",1);
+                newcounter.save(null,{
+                    success: function(newcounter) {
+                        //alert('New object created');
+                    }, error: function(newcounter,error) {
+                        alert('Failed to create');
+                    }
+                })
+            }
+        },
+        error: function(error) {
+            //find null is not a error
+            alert('Error:'+error.code+" "+error.message);
+        }
+    });
+}
+$(function() {
+    var Counter=AV.Object.extend("Counter");
+    //only increse visit counting when intering a page
+    if ($('.article-title').length == 1) {
+       addCount(Counter);
+    }
+    var query=new AV.Query(Counter);
+    query.descending("time");
+    // the sum of popular posts
+    query.limit(10); 
+    query.find({
+        success: function(results) {
+                for(var i=0;i<results.length;i++) {
+                    var counter=results[i];
+                    title=counter.get("title");
+                    url=counter.get("url");
+                    time=counter.get("time");
+                    // add to the popularlist widget
+                    showcontent=title+" ("+time+")";
+                    //notice the "" in href
+                    $('.popularlist').append('<li><a href="'+url+'">'+showcontent+'</a></li>');
+                }
+            },
+        error: function(error) {
+            alert("Error:"+error.code+" "+error.message);
+        }
+    });
+});
+</script>
+</div>
+    </div>
+</body>
+</html>
